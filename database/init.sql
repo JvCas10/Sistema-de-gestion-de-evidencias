@@ -10,9 +10,7 @@ GO
 USE Prueba_Tec;
 GO
 
--- ============================================
 -- TABLAS
--- ============================================
 
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Roles')
 BEGIN
@@ -97,9 +95,7 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IDX_Indicios_Expediente')
     CREATE INDEX IDX_Indicios_Expediente ON Indicios(expediente_id);
 GO
 
--- ============================================
 -- DATOS INICIALES
--- ============================================
 
 IF NOT EXISTS (SELECT * FROM Roles)
 BEGIN
@@ -123,29 +119,7 @@ BEGIN
 END
 GO
 
--- ============================================
 -- STORED PROCEDURES: AUTENTICACION
--- ============================================
-
-IF OBJECT_ID('sp_LoginUsuario', 'P') IS NOT NULL DROP PROCEDURE sp_LoginUsuario;
-GO
-CREATE PROCEDURE sp_LoginUsuario
-    @email VARCHAR(255),
-    @password_hash VARCHAR(255)
-AS
-BEGIN
-    SET NOCOUNT ON;
-    BEGIN TRY
-        SELECT u.usuario_id, u.nombre, u.email, u.rol_id, r.nombre as rol_nombre, u.activo
-        FROM Usuario u
-        INNER JOIN Roles r ON u.rol_id = r.rol_id
-        WHERE u.email = @email AND u.password_hash = @password_hash AND u.activo = 1;
-    END TRY
-    BEGIN CATCH
-        THROW;
-    END CATCH
-END
-GO
 
 IF OBJECT_ID('sp_CrearUsuario', 'P') IS NOT NULL DROP PROCEDURE sp_CrearUsuario;
 GO
@@ -192,9 +166,7 @@ BEGIN
 END
 GO
 
--- ============================================
 -- STORED PROCEDURES: EXPEDIENTES
--- ============================================
 
 IF OBJECT_ID('sp_CrearExpediente', 'P') IS NOT NULL DROP PROCEDURE sp_CrearExpediente;
 GO
@@ -234,7 +206,7 @@ BEGIN
     SET NOCOUNT ON;
     BEGIN TRY
         SELECT e.expediente_id, e.numero_expediente, e.descripcion, e.estado, e.fecha_creacion, e.fecha_revision,
-               e.justificacion_rechazo, t.nombre as tecnico_nombre, c.nombre as coordinador_nombre,
+               t.nombre as tecnico_nombre, c.nombre as coordinador_nombre,
                (SELECT COUNT(*) FROM Indicios WHERE expediente_id = e.expediente_id) as total_indicios
         FROM Expedientes e
         INNER JOIN Usuario t ON e.tecnico_registro = t.usuario_id
@@ -259,8 +231,10 @@ BEGIN
     SET NOCOUNT ON;
     BEGIN TRY
         SELECT e.expediente_id, e.numero_expediente, e.descripcion, e.estado, e.fecha_creacion, e.fecha_revision,
-               e.fecha_ultima_modificacion, e.justificacion_rechazo, e.tecnico_registro, t.nombre as tecnico_nombre,
-               e.coordinador_asignado, c.nombre as coordinador_nombre
+               e.justificacion_rechazo, e.tecnico_registro, e.coordinador_asignado,
+               t.nombre as tecnico_nombre, t.email as tecnico_email,
+               c.nombre as coordinador_nombre, c.email as coordinador_email,
+               (SELECT COUNT(*) FROM Indicios WHERE expediente_id = e.expediente_id) as total_indicios
         FROM Expedientes e
         INNER JOIN Usuario t ON e.tecnico_registro = t.usuario_id
         LEFT JOIN Usuario c ON e.coordinador_asignado = c.usuario_id
@@ -282,12 +256,14 @@ BEGIN
     SET NOCOUNT ON;
     BEGIN TRY
         BEGIN TRANSACTION;
-        UPDATE Expedientes SET descripcion = @descripcion, fecha_ultima_modificacion = GETDATE()
-        WHERE expediente_id = @expediente_id AND estado = 'EN_REGISTRO';
-        IF @@ROWCOUNT = 0
+        DECLARE @estado VARCHAR(20);
+        SELECT @estado = estado FROM Expedientes WHERE expediente_id = @expediente_id;
+        IF @estado != 'EN_REGISTRO'
         BEGIN
-            THROW 50003, 'No se puede actualizar el expediente', 1;
+            THROW 50003, 'Solo se pueden editar expedientes en registro', 1;
         END
+        UPDATE Expedientes SET descripcion = @descripcion, fecha_ultima_modificacion = GETDATE()
+        WHERE expediente_id = @expediente_id;
         COMMIT TRANSACTION;
     END TRY
     BEGIN CATCH
@@ -307,16 +283,19 @@ BEGIN
     SET NOCOUNT ON;
     BEGIN TRY
         BEGIN TRANSACTION;
-        IF NOT EXISTS(SELECT 1 FROM Indicios WHERE expediente_id = @expediente_id)
+        DECLARE @estado VARCHAR(20), @total_indicios INT;
+        SELECT @estado = estado FROM Expedientes WHERE expediente_id = @expediente_id;
+        SELECT @total_indicios = COUNT(*) FROM Indicios WHERE expediente_id = @expediente_id;
+        IF @estado != 'EN_REGISTRO'
         BEGIN
-            THROW 50004, 'El expediente debe tener al menos un indicio', 1;
+            THROW 50004, 'Solo se pueden enviar a revision expedientes en registro', 1;
+        END
+        IF @total_indicios = 0
+        BEGIN
+            THROW 50005, 'El expediente debe tener al menos un indicio', 1;
         END
         UPDATE Expedientes SET estado = 'EN_REVISION', coordinador_asignado = @coordinador_asignado, fecha_ultima_modificacion = GETDATE()
-        WHERE expediente_id = @expediente_id AND estado = 'EN_REGISTRO';
-        IF @@ROWCOUNT = 0
-        BEGIN
-            THROW 50005, 'No se puede enviar a revision', 1;
-        END
+        WHERE expediente_id = @expediente_id;
         COMMIT TRANSACTION;
     END TRY
     BEGIN CATCH
@@ -329,19 +308,20 @@ GO
 IF OBJECT_ID('sp_AprobarExpediente', 'P') IS NOT NULL DROP PROCEDURE sp_AprobarExpediente;
 GO
 CREATE PROCEDURE sp_AprobarExpediente
-    @expediente_id INT,
-    @coordinador_id INT
+    @expediente_id INT
 AS
 BEGIN
     SET NOCOUNT ON;
     BEGIN TRY
         BEGIN TRANSACTION;
-        UPDATE Expedientes SET estado = 'APROBADO', fecha_revision = GETDATE(), fecha_ultima_modificacion = GETDATE()
-        WHERE expediente_id = @expediente_id AND coordinador_asignado = @coordinador_id AND estado = 'EN_REVISION';
-        IF @@ROWCOUNT = 0
+        DECLARE @estado VARCHAR(20);
+        SELECT @estado = estado FROM Expedientes WHERE expediente_id = @expediente_id;
+        IF @estado != 'EN_REVISION'
         BEGIN
-            THROW 50006, 'No se puede aprobar el expediente', 1;
+            THROW 50006, 'Solo se pueden aprobar expedientes en revision', 1;
         END
+        UPDATE Expedientes SET estado = 'APROBADO', fecha_revision = GETDATE(), fecha_ultima_modificacion = GETDATE()
+        WHERE expediente_id = @expediente_id;
         COMMIT TRANSACTION;
     END TRY
     BEGIN CATCH
@@ -355,24 +335,25 @@ IF OBJECT_ID('sp_RechazarExpediente', 'P') IS NOT NULL DROP PROCEDURE sp_Rechaza
 GO
 CREATE PROCEDURE sp_RechazarExpediente
     @expediente_id INT,
-    @coordinador_id INT,
     @justificacion_rechazo VARCHAR(500)
 AS
 BEGIN
     SET NOCOUNT ON;
     BEGIN TRY
         BEGIN TRANSACTION;
-        IF @justificacion_rechazo IS NULL OR LEN(@justificacion_rechazo) < 10
+        DECLARE @estado VARCHAR(20);
+        SELECT @estado = estado FROM Expedientes WHERE expediente_id = @expediente_id;
+        IF @estado != 'EN_REVISION'
         BEGIN
-            THROW 50007, 'La justificacion debe tener al menos 10 caracteres', 1;
+            THROW 50007, 'Solo se pueden rechazar expedientes en revision', 1;
         END
-        UPDATE Expedientes SET estado = 'RECHAZADO', justificacion_rechazo = @justificacion_rechazo, 
+        IF @justificacion_rechazo IS NULL OR LEN(TRIM(@justificacion_rechazo)) = 0
+        BEGIN
+            THROW 50008, 'La justificacion del rechazo es requerida', 1;
+        END
+        UPDATE Expedientes SET estado = 'RECHAZADO', justificacion_rechazo = @justificacion_rechazo,
                fecha_revision = GETDATE(), fecha_ultima_modificacion = GETDATE()
-        WHERE expediente_id = @expediente_id AND coordinador_asignado = @coordinador_id AND estado = 'EN_REVISION';
-        IF @@ROWCOUNT = 0
-        BEGIN
-            THROW 50008, 'No se puede rechazar el expediente', 1;
-        END
+        WHERE expediente_id = @expediente_id;
         COMMIT TRANSACTION;
     END TRY
     BEGIN CATCH
@@ -382,9 +363,7 @@ BEGIN
 END
 GO
 
--- ============================================
 -- STORED PROCEDURES: INDICIOS
--- ============================================
 
 IF OBJECT_ID('sp_CrearIndicio', 'P') IS NOT NULL DROP PROCEDURE sp_CrearIndicio;
 GO
@@ -504,9 +483,7 @@ BEGIN
 END
 GO
 
--- ============================================
 -- STORED PROCEDURES: REPORTES
--- ============================================
 
 IF OBJECT_ID('sp_ObtenerReportePorFechas', 'P') IS NOT NULL DROP PROCEDURE sp_ObtenerReportePorFechas;
 GO

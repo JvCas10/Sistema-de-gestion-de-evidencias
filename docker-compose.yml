@@ -2,25 +2,54 @@ version: '3.8'
 
 services:
   sqlserver:
-    image: mcr.microsoft.com/mssql/server:2019-latest
+    image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: dicri-sqlserver
     restart: unless-stopped
+    user: root
     ports:
       - "1433:1433"
     environment:
       - ACCEPT_EULA=Y
-      - SA_PASSWORD=DicriPass2024!
+      - MSSQL_SA_PASSWORD=Dicri2025!
       - MSSQL_PID=Express
     volumes:
       - sqlserver-data:/var/opt/mssql
-      - ./database:/docker-entrypoint-initdb.d
+      - ./database:/tmp/database
     networks:
       - dicri-network
 
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: dicri-db-init
+    restart: "no"
+    depends_on:
+      - sqlserver
+    volumes:
+      - ./database:/tmp/database
+    networks:
+      - dicri-network
+    user: root
+    command: >
+      bash -c "
+      echo 'Esperando a que SQL Server responda';
+      n=0;
+      until [ \$n -ge 30 ]; do
+        /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P Dicri2025! -C -Q 'SELECT 1' > /dev/null 2>&1 && break;
+        n=\$((n+1));
+        echo 'SQL Server aun no esta listo, reintentando...';
+        sleep 2;
+      done;
+      if [ \$n -ge 30 ]; then
+        echo 'ERROR: SQL Server tardo demasiado.';
+        exit 1;
+      fi;
+      echo 'Conexión exitosa!';
+      /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P Dicri2025! -C -i /tmp/database/init.sql;
+      echo 'Inicialización completada.';
+      "
+
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: jvcas17/dicri-backend:v1.3
     container_name: dicri-backend
     restart: unless-stopped
     ports:
@@ -31,9 +60,9 @@ services:
       - DB_SERVER=sqlserver
       - DB_DATABASE=Prueba_Tec
       - DB_USER=sa
-      - DB_PASSWORD=DicriPass2024!
+      - DB_PASSWORD=Dicri2025!
       - DB_PORT=1433
-      - JWT_SECRET=dicri_secret_2024_production_key_change_this
+      - JWT_SECRET=Prueba2025!
       - JWT_EXPIRES_IN=24h
     networks:
       - dicri-network
@@ -41,9 +70,7 @@ services:
       - sqlserver
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: jvcas17/dicri-frontend:v1.1
     container_name: dicri-frontend
     restart: unless-stopped
     ports:
