@@ -14,7 +14,7 @@ Instalación:
 
 Clonar el repositorio:
 
-bashgit clone https://github.com/JvCas10/Sistema-de-gestion-de-evidencias.git
+git clone https://github.com/JvCas10/Sistema-de-gestion-de-evidencias.git
 
 
 
