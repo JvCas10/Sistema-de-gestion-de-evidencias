@@ -10,7 +10,9 @@ GO
 USE Prueba_Tec;
 GO
 
+-- ============================================
 -- TABLAS
+-- ============================================
 
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Roles')
 BEGIN
@@ -95,7 +97,9 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IDX_Indicios_Expediente')
     CREATE INDEX IDX_Indicios_Expediente ON Indicios(expediente_id);
 GO
 
+-- ============================================
 -- DATOS INICIALES
+-- ============================================
 
 IF NOT EXISTS (SELECT * FROM Roles)
 BEGIN
@@ -119,7 +123,9 @@ BEGIN
 END
 GO
 
+-- ============================================
 -- STORED PROCEDURES: AUTENTICACION
+-- ============================================
 
 IF OBJECT_ID('sp_CrearUsuario', 'P') IS NOT NULL DROP PROCEDURE sp_CrearUsuario;
 GO
@@ -166,7 +172,9 @@ BEGIN
 END
 GO
 
+-- ============================================
 -- STORED PROCEDURES: EXPEDIENTES
+-- ============================================
 
 IF OBJECT_ID('sp_CrearExpediente', 'P') IS NOT NULL DROP PROCEDURE sp_CrearExpediente;
 GO
@@ -308,7 +316,8 @@ GO
 IF OBJECT_ID('sp_AprobarExpediente', 'P') IS NOT NULL DROP PROCEDURE sp_AprobarExpediente;
 GO
 CREATE PROCEDURE sp_AprobarExpediente
-    @expediente_id INT
+    @expediente_id INT,
+    @coordinador_id INT
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -335,6 +344,7 @@ IF OBJECT_ID('sp_RechazarExpediente', 'P') IS NOT NULL DROP PROCEDURE sp_Rechaza
 GO
 CREATE PROCEDURE sp_RechazarExpediente
     @expediente_id INT,
+    @coordinador_id INT,
     @justificacion_rechazo VARCHAR(500)
 AS
 BEGIN
@@ -363,7 +373,9 @@ BEGIN
 END
 GO
 
+-- ============================================
 -- STORED PROCEDURES: INDICIOS
+-- ============================================
 
 IF OBJECT_ID('sp_CrearIndicio', 'P') IS NOT NULL DROP PROCEDURE sp_CrearIndicio;
 GO
@@ -483,7 +495,9 @@ BEGIN
 END
 GO
 
+-- ============================================
 -- STORED PROCEDURES: REPORTES
+-- ============================================
 
 IF OBJECT_ID('sp_ObtenerReportePorFechas', 'P') IS NOT NULL DROP PROCEDURE sp_ObtenerReportePorFechas;
 GO
